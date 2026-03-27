@@ -2,14 +2,14 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A web-based GUI for data wrangling â€” manage and transform tabular datasets (CSV) through a graphical interface powered by pandas, without writing code.
+A web-based GUI for data wrangling — manage and transform tabular datasets (CSV, TSV, JSON, XLSX, and Parquet) through a graphical interface powered by pandas, without writing code.
 
 ## Features
 
-- Upload and manage CSV datasets through a graphical interface
+- Upload and manage CSV, TSV, JSON, XLSX, and Parquet datasets through a graphical interface
 - Apply pandas-powered transformations: filter, sort, pivot, deduplicate, and more
 - Inline cell editing and row/column management
-- Checkpoint system â€” save and revert dataset states
+- Checkpoint system — save and revert dataset states
 - Full action history tracking via change logs
 
 ## Prerequisites

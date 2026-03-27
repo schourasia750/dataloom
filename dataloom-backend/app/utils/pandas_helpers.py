@@ -1,4 +1,4 @@
-"""Pandas utility functions for safe CSV operations and response building."""
+"""Pandas utility functions for safe dataset operations and response building."""
 
 from pathlib import Path
 from typing import Any
@@ -7,7 +7,56 @@ import pandas as pd
 from fastapi import HTTPException
 
 
-def read_csv_safe(path: Path) -> pd.DataFrame:
+def read_dataset_safe(path: Path | str) -> pd.DataFrame:
+    """Read a supported dataset file safely with error handling.
+
+    Supports CSV, TSV, JSON, XLSX, and Parquet uploads.
+
+    Args:
+        path: Path to the dataset file.
+
+    Returns:
+        DataFrame with the dataset contents.
+
+    Raises:
+        HTTPException: If the file cannot be read.
+    """
+    path = Path(path)
+    ext = path.suffix.lower()
+    format_names = {
+        ".csv": "CSV",
+        ".tsv": "TSV",
+        ".json": "JSON",
+        ".xlsx": "Excel",
+        ".parquet": "Parquet",
+    }
+
+    try:
+        if ext == ".csv":
+            return pd.read_csv(path)
+        if ext == ".tsv":
+            return pd.read_csv(path, sep="\t")
+        if ext == ".json":
+            try:
+                return pd.read_json(path)
+            except ValueError:
+                return pd.read_json(path, lines=True)
+        if ext == ".xlsx":
+            return pd.read_excel(path)
+        if ext == ".parquet":
+            return pd.read_parquet(path)
+        raise HTTPException(status_code=400, detail=f"Unsupported dataset format: {ext}")
+    except HTTPException:
+        raise
+    except FileNotFoundError:
+        label = format_names.get(ext, "Dataset")
+        raise HTTPException(status_code=404, detail=f"{label} file not found: {path}") from None
+    except Exception as e:
+        label = format_names.get(ext, "dataset")
+        raise HTTPException(status_code=500, detail=f"Error reading {label}: {str(e)}") from e
+
+
+def read_csv_safe(path: Path | str) -> pd.DataFrame:
     """Read a CSV file safely with error handling.
 
     Args:
@@ -19,12 +68,7 @@ def read_csv_safe(path: Path) -> pd.DataFrame:
     Raises:
         HTTPException: If the file cannot be read.
     """
-    try:
-        return pd.read_csv(path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"CSV file not found: {path}") from None
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading CSV: {str(e)}") from e
+    return read_dataset_safe(path)
 
 
 def save_csv_safe(df: pd.DataFrame, path: Path) -> None:

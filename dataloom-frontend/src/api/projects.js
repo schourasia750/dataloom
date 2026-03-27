@@ -5,8 +5,8 @@
 import client from "./client";
 
 /**
- * Upload a new project CSV file.
- * @param {File} file - The CSV file to upload.
+ * Upload a new project dataset file.
+ * @param {File} file - The dataset file to upload.
  * @param {string} projectName - Name for the new project.
  * @param {string} projectDescription - Description for the new project.
  * @returns {Promise<Object>} The created project response.

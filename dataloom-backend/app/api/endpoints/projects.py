@@ -20,7 +20,7 @@ from app.services.project_service import (
 )
 from app.services.transformation_service import apply_logged_transformation
 from app.utils.logging import get_logger
-from app.utils.pandas_helpers import dataframe_to_response, read_csv_safe, save_csv_safe
+from app.utils.pandas_helpers import dataframe_to_response, read_csv_safe, read_dataset_safe, save_csv_safe
 from app.utils.security import validate_upload_file
 
 logger = get_logger(__name__)
@@ -35,18 +35,26 @@ async def upload_project(
     projectDescription: str = Form(...),
     db: Session = Depends(database.get_db),
 ):
-    """Upload a new CSV file for a project.
+    """Upload a new dataset file for a project.
 
-    Validates the file, stores it with a sanitized name, creates a working copy,
-    and returns the initial project data.
+    Validates the file, stores the original upload with a sanitized name,
+    creates a normalized CSV working copy, and returns the initial project data.
     """
     logger.info("Upload request: project=%s, file=%s", projectName, file.filename)
     validate_upload_file(file)
 
     original_path, copy_path = store_upload(file)
-    df = read_csv_safe(original_path)
-
-    project = create_project(db, projectName, str(copy_path), projectDescription)
+    try:
+        df = read_dataset_safe(original_path)
+        save_csv_safe(df, copy_path)
+        project = create_project(db, projectName, str(copy_path), projectDescription)
+    except Exception:
+        for path in (copy_path, original_path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+        raise
 
     resp = dataframe_to_response(df)
     return {
@@ -100,11 +108,10 @@ async def save_project(
     """
     project = get_project_or_404(project_id, db)
 
-    # Load original file for replaying transformations
+    # Load the original uploaded dataset for replaying transformations.
     original_path = get_original_path(project.file_path)
-    df = read_csv_safe(original_path)
+    df = read_dataset_safe(original_path)
 
-    # Get all unapplied logs for this project
     logs = (
         db.query(models.ProjectChangeLog)
         .filter(
@@ -115,7 +122,6 @@ async def save_project(
         .all()
     )
 
-    # Replay each logged transformation on the original
     for log in logs:
         df = apply_logged_transformation(df, log.action_type, log.action_details)
 
@@ -126,7 +132,6 @@ async def save_project(
     )
     save_csv_safe(df, project.file_path)
 
-    # Create checkpoint (marks logs as applied)
     checkpoint = create_checkpoint(db, project_id, commit_message)
 
     resp = dataframe_to_response(df)
@@ -154,7 +159,7 @@ async def revert_to_checkpoint(
     project = get_project_or_404(project_id, db)
 
     original_path = get_original_path(project.file_path)
-    df = read_csv_safe(original_path)
+    df = read_dataset_safe(original_path)
 
     if checkpoint_id is not None:
         checkpoint = (
@@ -168,7 +173,6 @@ async def revert_to_checkpoint(
         if not checkpoint:
             raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-        # Find all checkpoint IDs created at or before the target checkpoint
         eligible_checkpoint_ids = [
             c.id
             for c in db.query(models.Checkpoint)

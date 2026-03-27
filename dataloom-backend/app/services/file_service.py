@@ -10,10 +10,10 @@ logger = get_logger(__name__)
 
 
 def store_upload(file) -> tuple[Path, Path]:
-    """Store an uploaded file and create a working copy.
+    """Store an uploaded file and determine the working copy path.
 
-    Saves the file with a sanitized name and creates a _copy.csv for
-    transformation operations, keeping the original pristine.
+    Saves the original uploaded file with a sanitized name and returns the path
+    for the CSV working copy used by transformation operations.
 
     Args:
         file: The FastAPI UploadFile object.
@@ -27,10 +27,13 @@ def store_upload(file) -> tuple[Path, Path]:
     with open(original_path, "wb+") as f:
         shutil.copyfileobj(file.file, f)
 
-    copy_path = Path(str(original_path).replace(".csv", "_copy.csv"))
-    shutil.copy2(original_path, copy_path)
+    if original_path.suffix.lower() == ".csv":
+        copy_name = f"{original_path.stem}_copy.csv"
+    else:
+        copy_name = f"{original_path.name}_copy.csv"
+    copy_path = original_path.with_name(copy_name)
 
-    logger.info("Stored upload: original=%s, copy=%s", original_path, copy_path)
+    logger.info("Stored upload: original=%s, working_copy=%s", original_path, copy_path)
     return original_path, copy_path
 
 
@@ -38,19 +41,28 @@ def get_original_path(copy_path: str) -> Path:
     """Derive the original file path from a working copy path.
 
     Args:
-        copy_path: Path to the _copy.csv working file.
+        copy_path: Path to the CSV working file.
 
     Returns:
-        Path to the original CSV file.
+        Path to the original uploaded file.
     """
-    return Path(copy_path.replace("_copy.csv", ".csv"))
+    path = Path(copy_path)
+
+    if not path.name.endswith("_copy.csv"):
+        return path
+
+    base_name = path.name.removesuffix("_copy.csv")
+    if "." in base_name:
+        return path.with_name(base_name)
+
+    return path.with_name(f"{base_name}.csv")
 
 
 def delete_project_files(copy_path: str) -> None:
     """Delete both the working copy and original file for a project.
 
     Args:
-        copy_path: Path to the _copy.csv working file.
+        copy_path: Path to the CSV working file.
     """
     original_path = get_original_path(copy_path)
 

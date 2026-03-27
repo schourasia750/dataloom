@@ -4,6 +4,10 @@ import { uploadProject, getRecentProjects, deleteProject } from "../api";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./common/ConfirmDialog";
 
+const SUPPORTED_UPLOAD_EXTENSIONS = [".csv", ".tsv", ".json", ".xlsx", ".parquet"];
+const SUPPORTED_UPLOAD_ACCEPT = SUPPORTED_UPLOAD_EXTENSIONS.join(",");
+const SUPPORTED_UPLOAD_LABEL = "CSV, TSV, JSON, XLSX, or Parquet";
+
 const ProjectCard = ({ project, onClick, onDelete }) => {
   const modified = new Date(project.last_modified).toLocaleDateString(undefined, {
     year: "numeric",
@@ -105,6 +109,14 @@ const HomeScreen = () => {
       return;
     }
 
+    const extension = fileUpload.name.includes(".")
+      ? `.${fileUpload.name.split(".").pop().toLowerCase()}`
+      : "";
+    if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(extension)) {
+      showToast(`Supported file types: ${SUPPORTED_UPLOAD_LABEL}.`, "warning");
+      return;
+    }
+
     try {
       const data = await uploadProject(fileUpload, projectName, projectDescription);
       console.log("Backend response data:", data);
@@ -120,7 +132,8 @@ const HomeScreen = () => {
       }
     } catch (error) {
       console.error("Error uploading file:", error);
-      showToast("Error uploading file. Please try again.", "error");
+      const message = error?.response?.data?.detail;
+      showToast(typeof message === "string" ? message : "Error uploading file. Please try again.", "error");
     }
 
     setShowModal(false);
@@ -203,9 +216,11 @@ const HomeScreen = () => {
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Upload Dataset</h2>
             <input
               type="file"
+              accept={SUPPORTED_UPLOAD_ACCEPT}
               className="block w-full text-lg text-gray-900 border border-gray-300 rounded-md px-3 py-2 bg-white cursor-pointer focus:outline-none mb-4"
               onChange={handleFileUpload}
             />
+            <p className="mb-4 text-sm text-gray-500">Supported file types: {SUPPORTED_UPLOAD_LABEL}</p>
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Project Description</h2>
             <input
               type="text"
