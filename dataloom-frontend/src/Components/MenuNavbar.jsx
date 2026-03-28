@@ -36,7 +36,7 @@ import {
   LuDownload,
   LuRefreshCw,
   LuScissors,
-  LuFunctionSquare,
+  LuSigma,
   LuWorkflow,
   LuListTodo,
 } from "react-icons/lu";
@@ -298,7 +298,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
           },
           {
             label: "Formula Col",
-            icon: LuFunctionSquare,
+            icon: LuSigma,
             formType: "ComputedFormulaForm",
             onClick: () => handleMenuClick("ComputedFormulaForm"),
           },
