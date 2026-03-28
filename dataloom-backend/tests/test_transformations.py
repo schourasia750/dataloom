@@ -11,6 +11,7 @@ from app.services.transformation_service import (
     apply_filter,
     apply_sort,
     change_cell_value,
+    compute_formula_column,
     delete_column,
     delete_row,
     drop_duplicates,
@@ -185,3 +186,22 @@ class TestPivotTable:
         result = pivot_table(df, "city", "sales", aggfunc="sum")
         assert "city" in result.columns
         assert "sales" in result.columns
+
+
+class TestComputedFormula:
+    def test_compute_formula_column_appends_result(self):
+        df = pd.DataFrame({"price": [10, 20], "quantity": [2, 3]})
+        result = compute_formula_column(df, "total", "price * quantity")
+
+        assert result.columns.tolist() == ["price", "quantity", "total"]
+        assert result["total"].tolist() == [20, 60]
+
+    def test_compute_formula_column_supports_column_names_with_spaces(self):
+        df = pd.DataFrame({"unit price": [10, 20], "qty sold": [2, 3]})
+        result = compute_formula_column(df, "revenue", "unit price * qty sold")
+
+        assert result["revenue"].tolist() == [20, 60]
+
+    def test_compute_formula_rejects_duplicate_column(self, sample_df):
+        with pytest.raises(TransformationError, match="already exists"):
+            compute_formula_column(sample_df, "name", "age * 2")

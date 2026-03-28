@@ -37,3 +37,7 @@ export const RENAME_COLUMN = "renameCol";
 export const CAST_DATA_TYPE = "castDataType";
 /** @type {string} Trim whitespace from columns */
 export const TRIM_WHITESPACE = "trimWhitespace";
+/** @type {string} Add a computed formula column */
+export const COMPUTED_FORMULA = "computedFormula";
+/** @type {string} Apply a saved transformation pipeline */
+export const APPLY_PIPELINE = "applyPipeline";

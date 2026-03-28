@@ -41,6 +41,10 @@ class Project(SQLModel, table=True):
         back_populates="project",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    pipelines: list["TransformationPipeline"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class ProjectChangeLog(SQLModel, table=True):
@@ -89,3 +93,30 @@ class Checkpoint(SQLModel, table=True):
     )
 
     project: Project | None = Relationship(back_populates="checkpoints")
+
+
+class TransformationPipeline(SQLModel, table=True):
+    """A reusable named sequence of transformations for a project."""
+
+    __tablename__ = "transformation_pipelines"
+
+    id: uuid_mod.UUID = Field(
+        default_factory=uuid_mod.uuid4,
+        sa_column=Column(sa.Uuid, primary_key=True, default=uuid_mod.uuid4),
+    )
+    project_id: uuid_mod.UUID = Field(
+        sa_column=Column(sa.Uuid, sa.ForeignKey("projects.project_id"), nullable=False),
+    )
+    name: str = Field(index=True, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    steps: list[dict] = Field(sa_column=sa.Column(sa.JSON, nullable=False))
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime, server_default=func.now()),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime, server_default=func.now(), onupdate=func.now()),
+    )
+
+    project: Project | None = Relationship(back_populates="pipelines")

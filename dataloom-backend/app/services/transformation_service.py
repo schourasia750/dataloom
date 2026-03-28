@@ -4,6 +4,8 @@ Each function takes a DataFrame and parameters, returns a new DataFrame.
 No side effects -- saving to disk is handled by the caller.
 """
 
+import re
+
 import pandas as pd
 
 from app.utils.logging import get_logger
@@ -16,6 +18,15 @@ class TransformationError(Exception):
     """Raised when a transformation cannot be applied due to invalid input."""
 
     pass
+
+
+def _normalize_expression_columns(expression: str, columns) -> str:
+    """Wrap non-identifier column names in backticks for pandas expressions."""
+    normalized = expression
+    for column in sorted(columns, key=len, reverse=True):
+        if not column.isidentifier():
+            normalized = re.sub(rf"(?<!`){re.escape(column)}(?!`)", f"`{column}`", normalized)
+    return normalized
 
 
 def get_column_type(df: pd.DataFrame, column: str) -> str:
@@ -152,9 +163,11 @@ def add_column(df: pd.DataFrame, index: int, name: str) -> pd.DataFrame:
     """
     if index < 0 or index > len(df.columns):
         raise TransformationError(f"Column index {index} out of range (0-{len(df.columns)})")
+    if name is None or not str(name).strip():
+        raise TransformationError("Column name is required")
 
     df = df.copy()
-    df.insert(index, name, None)
+    df.insert(index, str(name).strip(), None)
     return df
 
 
@@ -288,6 +301,33 @@ def cast_data_type(df: pd.DataFrame, column: str, target_type: str) -> pd.DataFr
         raise TransformationError(f"Failed to cast column '{column}' to {target_type}: {e}") from e
 
     return df
+
+
+def compute_formula_column(
+    df: pd.DataFrame, new_column: str, formula: str, insert_index: int | None = None
+) -> pd.DataFrame:
+    """Create a computed column from a pandas-compatible expression."""
+    if not new_column or not new_column.strip():
+        raise TransformationError("New column name cannot be empty")
+    if new_column in df.columns:
+        raise TransformationError(f"Column '{new_column}' already exists")
+    if not formula or not formula.strip():
+        raise TransformationError("Formula cannot be empty")
+    if insert_index is not None and (insert_index < 0 or insert_index > len(df.columns)):
+        raise TransformationError(f"Column index {insert_index} out of range (0-{len(df.columns)})")
+
+    validate_query_string(formula)
+
+    expression = _normalize_expression_columns(formula.strip(), df.columns)
+    result_df = df.copy()
+    try:
+        result = result_df.eval(expression, engine="python")
+    except Exception as e:
+        raise TransformationError(f"Failed to evaluate formula '{formula}': {e}") from e
+
+    target_index = len(result_df.columns) if insert_index is None else insert_index
+    result_df.insert(target_index, new_column.strip(), result)
+    return result_df
 
 
 def trim_whitespace(df: pd.DataFrame, column: str) -> pd.DataFrame:
@@ -433,7 +473,15 @@ def apply_logged_transformation(df: pd.DataFrame, action_type: str, action_detai
     Raises:
         TransformationError: If the transformation cannot be applied.
     """
-    if action_type == "addRow":
+    if action_type == "filter":
+        params = action_details["parameters"]
+        return apply_filter(df, params["column"], params["condition"], params["value"])
+
+    elif action_type == "sort":
+        params = action_details["sort_params"]
+        return apply_sort(df, params["column"], params["ascending"])
+
+    elif action_type == "addRow":
         index = action_details["row_params"]["index"]
         return add_row(df, index)
 
@@ -470,6 +518,14 @@ def apply_logged_transformation(df: pd.DataFrame, action_type: str, action_detai
         keep = action_details["drop_duplicate"]["keep"]
         return drop_duplicates(df, columns, keep)
 
+    elif action_type == "advQueryFilter":
+        query = action_details["adv_query"]["query"]
+        return advanced_query(df, query)
+
+    elif action_type == "pivotTables":
+        params = action_details["pivot_query"]
+        return pivot_table(df, params["index"], params["value"], params.get("column"), params["aggfun"])
+
     elif action_type == "renameCol":
         col_index = action_details["rename_col_params"]["col_index"]
         new_name = action_details["rename_col_params"]["new_name"]
@@ -487,6 +543,22 @@ def apply_logged_transformation(df: pd.DataFrame, action_type: str, action_detai
     elif action_type == "dropNa":
         columns = action_details.get("drop_na_params", {}).get("columns")
         return drop_na(df, columns)
+
+    elif action_type == "computedFormula":
+        params = action_details["computed_formula_params"]
+        return compute_formula_column(
+            df,
+            params["new_column"],
+            params["formula"],
+            params.get("insert_index"),
+        )
+
+    elif action_type == "applyPipeline":
+        steps = action_details.get("steps", [])
+        result_df = df
+        for step in steps:
+            result_df = apply_logged_transformation(result_df, step["operation_type"], step)
+        return result_df
 
     else:
         logger.warning("Unknown action type in log replay: %s", action_type)

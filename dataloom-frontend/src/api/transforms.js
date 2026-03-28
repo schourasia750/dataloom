@@ -14,3 +14,18 @@ export const transformProject = async (projectId, transformationInput) => {
   const response = await client.post(`/projects/${projectId}/transform`, transformationInput);
   return response.data;
 };
+
+export const getPipelines = async (projectId) => {
+  const response = await client.get(`/projects/${projectId}/pipelines`);
+  return response.data;
+};
+
+export const createPipeline = async (projectId, pipelineInput) => {
+  const response = await client.post(`/projects/${projectId}/pipelines`, pipelineInput);
+  return response.data;
+};
+
+export const applyPipeline = async (projectId, pipelineId) => {
+  const response = await client.post(`/projects/${projectId}/pipelines/${pipelineId}/apply`);
+  return response.data;
+};

@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
-from app import database, schemas
+from app import database, models, schemas
 from app.api.dependencies import get_project_or_404
 from app.services import transformation_service as ts
 from app.services.project_service import log_transformation
@@ -22,7 +22,12 @@ router = APIRouter()
 COMPLEX_OPERATIONS = {"dropDuplicate", "advQueryFilter", "pivotTables", "dropNa"}
 
 
-def _handle_basic_transform(df, transformation_input, project, db, project_id):
+def _serialize_transform_steps(steps: list[schemas.TransformationInput]) -> list[dict]:
+    """Convert validated transformation steps into JSON-serializable payloads."""
+    return [step.model_dump(mode="json") for step in steps]
+
+
+def _handle_basic_transform(df, transformation_input, materialize_read_only=False):
     """Apply a basic transformation and optionally persist changes.
 
     For operations that modify data (addRow, delRow, addCol, delCol, changeCellValue, fillEmpty),
@@ -38,13 +43,13 @@ def _handle_basic_transform(df, transformation_input, project, db, project_id):
         if not transformation_input.parameters:
             raise HTTPException(status_code=400, detail="Filter parameters required")
         p = transformation_input.parameters
-        return ts.apply_filter(df, p.column, p.condition, p.value), False
+        return ts.apply_filter(df, p.column, p.condition, p.value), materialize_read_only
 
     elif op == "sort":
         if not transformation_input.sort_params:
             raise HTTPException(status_code=400, detail="Sort parameters required")
         p = transformation_input.sort_params
-        return ts.apply_sort(df, p.column, p.ascending), False
+        return ts.apply_sort(df, p.column, p.ascending), materialize_read_only
 
     elif op == "addRow":
         if not transformation_input.row_params:
@@ -97,11 +102,17 @@ def _handle_basic_transform(df, transformation_input, project, db, project_id):
         p = transformation_input.trim_whitespace_params
         return ts.trim_whitespace(df, p.column), True
 
+    elif op == "computedFormula":
+        if not transformation_input.computed_formula_params:
+            raise HTTPException(status_code=400, detail="Computed formula parameters required")
+        p = transformation_input.computed_formula_params
+        return ts.compute_formula_column(df, p.new_column, p.formula, p.insert_index), True
+
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported operation: {op}")
 
 
-def _handle_complex_transform(df, transformation_input, project, db, project_id):
+def _handle_complex_transform(df, transformation_input, materialize_read_only=False):
     """Apply a complex transformation.
 
     Returns:
@@ -118,13 +129,13 @@ def _handle_complex_transform(df, transformation_input, project, db, project_id)
     elif op == "advQueryFilter":
         if not transformation_input.adv_query:
             raise HTTPException(status_code=400, detail="Query parameter required")
-        return ts.advanced_query(df, transformation_input.adv_query.query), False
+        return ts.advanced_query(df, transformation_input.adv_query.query), materialize_read_only
 
     elif op == "pivotTables":
         if not transformation_input.pivot_query:
             raise HTTPException(status_code=400, detail="Pivot parameters required")
         p = transformation_input.pivot_query
-        return ts.pivot_table(df, p.index, p.value, p.column, p.aggfun), False
+        return ts.pivot_table(df, p.index, p.value, p.column, p.aggfun), materialize_read_only
 
     elif op == "dropNa":
         columns = None
@@ -134,6 +145,14 @@ def _handle_complex_transform(df, transformation_input, project, db, project_id)
 
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported operation: {op}")
+
+
+def _run_transform(df, transformation_input, materialize_read_only=False):
+    """Dispatch a transformation and optionally materialize preview-only operations."""
+    op = transformation_input.operation_type
+    if op in COMPLEX_OPERATIONS:
+        return _handle_complex_transform(df, transformation_input, materialize_read_only=materialize_read_only)
+    return _handle_basic_transform(df, transformation_input, materialize_read_only=materialize_read_only)
 
 
 @router.post("/{project_id}/transform", response_model=schemas.BasicQueryResponse)
@@ -152,10 +171,7 @@ async def transform_project(
     op = transformation_input.operation_type
 
     try:
-        if op in COMPLEX_OPERATIONS:
-            result_df, should_save = _handle_complex_transform(df, transformation_input, project, db, project_id)
-        else:
-            result_df, should_save = _handle_basic_transform(df, transformation_input, project, db, project_id)
+        result_df, should_save = _run_transform(df, transformation_input)
     except ts.TransformationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -163,11 +179,116 @@ async def transform_project(
 
     if should_save:
         save_csv_safe(result_df, project.file_path)
-        log_transformation(db, project_id, transformation_input.operation_type, transformation_input.dict())
+        log_transformation(
+            db,
+            project_id,
+            transformation_input.operation_type,
+            transformation_input.model_dump(mode="json"),
+        )
 
     resp = dataframe_to_response(result_df)
     return {
         "project_id": project_id,
         "operation_type": transformation_input.operation_type,
+        **resp,
+    }
+
+
+@router.get("/{project_id}/pipelines", response_model=list[schemas.TransformationPipelineResponse])
+def list_pipelines(project_id: uuid.UUID, db: Session = Depends(database.get_db)):
+    """List reusable transformation pipelines for a project."""
+    get_project_or_404(project_id, db)
+    pipelines = (
+        db.query(models.TransformationPipeline)
+        .filter(models.TransformationPipeline.project_id == project_id)
+        .order_by(models.TransformationPipeline.created_at.desc())
+        .all()
+    )
+    return pipelines
+
+
+@router.post("/{project_id}/pipelines", response_model=schemas.TransformationPipelineResponse)
+def create_pipeline(
+    project_id: uuid.UUID,
+    pipeline_input: schemas.TransformationPipelineCreate,
+    db: Session = Depends(database.get_db),
+):
+    """Save a reusable transformation pipeline for a project."""
+    get_project_or_404(project_id, db)
+
+    serialized_steps = (
+        _serialize_transform_steps(pipeline_input.steps)
+        if pipeline_input.steps
+        else [
+            log.action_details
+            for log in db.query(models.ProjectChangeLog)
+            .filter(models.ProjectChangeLog.project_id == project_id)
+            .order_by(models.ProjectChangeLog.timestamp)
+            .all()
+        ]
+    )
+
+    if not serialized_steps:
+        raise HTTPException(status_code=400, detail="No transformations available to save as a pipeline")
+
+    pipeline = models.TransformationPipeline(
+        project_id=project_id,
+        name=pipeline_input.name,
+        description=pipeline_input.description,
+        steps=serialized_steps,
+    )
+    db.add(pipeline)
+    db.commit()
+    db.refresh(pipeline)
+    return pipeline
+
+
+@router.post("/{project_id}/pipelines/{pipeline_id}/apply", response_model=schemas.BasicQueryResponse)
+def apply_pipeline(
+    project_id: uuid.UUID,
+    pipeline_id: uuid.UUID,
+    db: Session = Depends(database.get_db),
+):
+    """Apply a saved pipeline to the current project and persist the result."""
+    project = get_project_or_404(project_id, db)
+    pipeline = (
+        db.query(models.TransformationPipeline)
+        .filter(
+            models.TransformationPipeline.id == pipeline_id,
+            models.TransformationPipeline.project_id == project_id,
+        )
+        .first()
+    )
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    df = read_csv_safe(project.file_path)
+
+    try:
+        result_df = df
+        for raw_step in pipeline.steps:
+            step = schemas.TransformationInput.model_validate(raw_step)
+            result_df, _ = _run_transform(result_df, step, materialize_read_only=True)
+    except ts.TransformationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    save_csv_safe(result_df, project.file_path)
+    log_transformation(
+        db,
+        project_id,
+        schemas.OperationType.applyPipeline,
+        {
+            "pipeline_id": str(pipeline.id),
+            "pipeline_name": pipeline.name,
+            "steps": pipeline.steps,
+        },
+    )
+
+    resp = dataframe_to_response(result_df)
+    return {
+        "project_id": project_id,
+        "operation_type": schemas.OperationType.applyPipeline,
         **resp,
     }

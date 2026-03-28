@@ -9,6 +9,7 @@ from app.services.transformation_service import (
     TransformationError,
     apply_logged_transformation,
     cast_data_type,
+    compute_formula_column,
     rename_column,
 )
 
@@ -112,6 +113,27 @@ class TestCastDataType:
     def test_cast_invalid_column(self, sample_df):
         with pytest.raises(TransformationError, match="not found"):
             cast_data_type(sample_df, "nonexistent", "string")
+
+
+class TestComputedFormula:
+    def test_compute_formula_column(self):
+        df = pd.DataFrame({"price": [10, 20], "quantity": [3, 4]})
+        result = compute_formula_column(df, "total", "price * quantity")
+
+        assert result["total"].tolist() == [30, 80]
+
+    def test_replay_computed_formula(self):
+        df = pd.DataFrame({"price": [10, 20], "quantity": [3, 4]})
+        details = {
+            "computed_formula_params": {
+                "new_column": "total",
+                "formula": "price * quantity",
+                "insert_index": None,
+            }
+        }
+        result = apply_logged_transformation(df, "computedFormula", details)
+
+        assert result["total"].tolist() == [30, 80]
 
 
 # --- Log Replay Tests ---
@@ -311,3 +333,57 @@ class TestTransformEndpoint:
             },
         )
         assert response.status_code == expected_status
+
+    def test_computed_formula_transform_persists_column(self, client, uploaded_project):
+        response = client.post(
+            f"/projects/{uploaded_project}/transform",
+            json={
+                "operation_type": "computedFormula",
+                "computed_formula_params": {
+                    "new_column": "age_plus_ten",
+                    "formula": "age + 10",
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert "age_plus_ten" in body["columns"]
+
+    def test_save_and_apply_pipeline(self, client, uploaded_project):
+        transform_response = client.post(
+            f"/projects/{uploaded_project}/transform",
+            json={
+                "operation_type": "computedFormula",
+                "computed_formula_params": {
+                    "new_column": "age_double",
+                    "formula": "age * 2",
+                },
+            },
+        )
+        assert transform_response.status_code == 200
+
+        create_response = client.post(
+            f"/projects/{uploaded_project}/pipelines",
+            json={
+                "name": "Double Age",
+                "description": "Adds a doubled age column",
+            },
+        )
+        assert create_response.status_code == 200
+        pipeline_id = create_response.json()["id"]
+
+        revert_response = client.post(f"/projects/{uploaded_project}/revert")
+        assert revert_response.status_code == 200
+        assert "age_double" not in revert_response.json()["columns"]
+
+        apply_response = client.post(f"/projects/{uploaded_project}/pipelines/{pipeline_id}/apply")
+        assert apply_response.status_code == 200
+        assert "age_double" in apply_response.json()["columns"]
+
+    def test_pipeline_creation_rejects_empty_step_source(self, client, uploaded_project):
+        response = client.post(
+            f"/projects/{uploaded_project}/pipelines",
+            json={"name": "Empty Pipeline"},
+        )
+        assert response.status_code == 400

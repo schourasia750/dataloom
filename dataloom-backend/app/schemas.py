@@ -5,7 +5,7 @@ import uuid
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 # --- Enums ---
 
@@ -40,6 +40,8 @@ class OperationType(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    computedFormula = "computedFormula"
+    applyPipeline = "applyPipeline"
 
 
 class DropDup(StrEnum):
@@ -78,6 +80,8 @@ class ActionTypes(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    computedFormula = "computedFormula"
+    applyPipeline = "applyPipeline"
 
 
 # --- Basic transformation parameter schemas ---
@@ -113,7 +117,7 @@ class AddColumn(BaseModel):
     """
 
     index: int
-    name: str | None = None
+    name: str
 
 
 class DeleteColumn(BaseModel):
@@ -184,6 +188,14 @@ class DropNaParams(BaseModel):
         return v
 
 
+class ComputedFormulaParams(BaseModel):
+    """Parameters for adding a computed formula column."""
+
+    new_column: str
+    formula: str
+    insert_index: int | None = None
+
+
 # --- Complex transformation parameter schemas ---
 
 
@@ -252,6 +264,7 @@ class TransformationInput(BaseModel):
     cast_data_type_params: CastDataTypeParams | None = None
     trim_whitespace_params: TrimWhitespaceParams | None = None
     drop_na_params: DropNaParams | None = None
+    computed_formula_params: ComputedFormulaParams | None = None
 
 
 class BasicQueryResponse(BaseModel):
@@ -263,6 +276,34 @@ class BasicQueryResponse(BaseModel):
     columns: list[str]
     rows: list[list]
     dtypes: dict[str, str] = {}
+
+
+class TransformationPipelineCreate(BaseModel):
+    """Request body for saving a reusable transformation pipeline."""
+
+    name: str
+    description: str | None = None
+    steps: list[TransformationInput] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, value: str):
+        if not value or not value.strip():
+            raise ValueError("pipeline name cannot be empty")
+        return value.strip()
+
+
+class TransformationPipelineResponse(BaseModel):
+    """Saved transformation pipeline metadata and steps."""
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    description: str | None = None
+    steps: list[dict[str, Any]]
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectResponse(BaseModel):
@@ -306,6 +347,4 @@ class LastResponse(BaseModel):
     name: str
     description: str | None
     last_modified: datetime.datetime
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

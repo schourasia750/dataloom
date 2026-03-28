@@ -6,12 +6,23 @@ import AdvQueryFilterForm from "./forms/AdvQueryFilterForm";
 import PivotTableForm from "./forms/PivotTableForm";
 import CastDataTypeForm from "./forms/CastDataTypeForm";
 import TrimWhitespaceForm from "./forms/TrimWhitespaceForm";
+import ComputedFormulaForm from "./forms/ComputedFormulaForm";
 import LogsPanel from "./history/LogsPanel";
 import CheckpointsPanel from "./history/CheckpointsPanel";
+import PipelinesPanel from "./history/PipelinesPanel";
 import InputDialog from "./common/InputDialog";
 import ConfirmDialog from "./common/ConfirmDialog";
 import Toast from "./common/Toast";
-import { saveProject, exportProject, getLogs, getCheckpoints, revertToCheckpoint } from "../api";
+import {
+  saveProject,
+  exportProject,
+  getLogs,
+  getCheckpoints,
+  revertToCheckpoint,
+  getPipelines,
+  createPipeline,
+  applyPipeline,
+} from "../api";
 import proptype from "prop-types";
 import {
   LuFilter,
@@ -25,6 +36,9 @@ import {
   LuDownload,
   LuRefreshCw,
   LuScissors,
+  LuFunctionSquare,
+  LuWorkflow,
+  LuListTodo,
 } from "react-icons/lu";
 
 const MenuNavbar = ({ projectId, onTransform }) => {
@@ -37,9 +51,13 @@ const MenuNavbar = ({ projectId, onTransform }) => {
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showCastDataTypeForm, setShowCastDataTypeForm] = useState(false);
   const [showTrimWhitespaceForm, setShowTrimWhitespaceForm] = useState(false);
+  const [showComputedFormulaForm, setShowComputedFormulaForm] = useState(false);
+  const [showPipelines, setShowPipelines] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [pipelines, setPipelines] = useState([]);
   const [checkpoints, setCheckpoints] = useState(null);
   const [isInputOpen, setIsInputOpen] = useState(false);
+  const [inputMode, setInputMode] = useState("save");
   const [confirmData, setConfirmData] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -62,18 +80,45 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     }
   }, [projectId]);
 
+  const fetchPipelines = useCallback(async () => {
+    try {
+      const pipelinesResponse = await getPipelines(projectId);
+      setPipelines(pipelinesResponse);
+    } catch (error) {
+      console.error("Error fetching pipelines:", error);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     if (showLogs) fetchLogs();
     if (showCheckpoints) fetchCheckpoints();
-  }, [showLogs, showCheckpoints, fetchLogs, fetchCheckpoints]);
+    if (showPipelines) fetchPipelines();
+  }, [showLogs, showCheckpoints, showPipelines, fetchLogs, fetchCheckpoints, fetchPipelines]);
 
   const handleSave = () => {
+    setInputMode("save");
+    setIsInputOpen(true);
+  };
+
+  const handleSavePipeline = () => {
+    setInputMode("pipeline");
     setIsInputOpen(true);
   };
 
   const handleSubmitCommit = async (message) => {
     setIsInputOpen(false);
     if (!message) return;
+
+    if (inputMode === "pipeline") {
+      try {
+        await createPipeline(projectId, { name: message });
+        setToast({ message: "Pipeline saved successfully!", type: "success" });
+        fetchPipelines();
+      } catch {
+        setToast({ message: "Failed to save pipeline.", type: "error" });
+      }
+      return;
+    }
 
     try {
       await saveProject(projectId, message);
@@ -115,6 +160,16 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     });
   };
 
+  const handleApplyPipeline = async (pipelineId) => {
+    try {
+      const response = await applyPipeline(projectId, pipelineId);
+      onTransform(response);
+      setToast({ message: "Pipeline applied successfully!", type: "success" });
+    } catch {
+      setToast({ message: "Failed to apply pipeline.", type: "error" });
+    }
+  };
+
   const [activeForm, setActiveForm] = useState(null);
 
   const handleMenuClick = (formType) => {
@@ -125,8 +180,10 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     setShowPivotTableForm(false);
     setShowCastDataTypeForm(false);
     setShowTrimWhitespaceForm(false);
+    setShowComputedFormulaForm(false);
     setShowLogs(false);
     setShowCheckpoints(false);
+    setShowPipelines(false);
 
     setActiveForm(formType);
 
@@ -152,11 +209,17 @@ const MenuNavbar = ({ projectId, onTransform }) => {
       case "TrimWhitespaceForm":
         setShowTrimWhitespaceForm(true);
         break;
+      case "ComputedFormulaForm":
+        setShowComputedFormulaForm(true);
+        break;
       case "Logs":
         setShowLogs(true);
         break;
       case "Checkpoints":
         setShowCheckpoints(true);
+        break;
+      case "Pipelines":
+        setShowPipelines(true);
         break;
       default:
         break;
@@ -171,6 +234,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         group: "Save",
         items: [
           { label: "Save", icon: LuSave, onClick: handleSave },
+          { label: "Save Pipeline", icon: LuWorkflow, onClick: handleSavePipeline },
           { label: "Export", icon: LuDownload, onClick: handleExport },
         ],
       },
@@ -188,6 +252,12 @@ const MenuNavbar = ({ projectId, onTransform }) => {
             icon: LuBookmark,
             formType: "Checkpoints",
             onClick: () => handleMenuClick("Checkpoints"),
+          },
+          {
+            label: "Pipelines",
+            icon: LuListTodo,
+            formType: "Pipelines",
+            onClick: () => handleMenuClick("Pipelines"),
           },
         ],
       },
@@ -225,6 +295,12 @@ const MenuNavbar = ({ projectId, onTransform }) => {
             icon: LuScissors,
             formType: "TrimWhitespaceForm",
             onClick: () => handleMenuClick("TrimWhitespaceForm"),
+          },
+          {
+            label: "Formula Col",
+            icon: LuFunctionSquare,
+            formType: "ComputedFormulaForm",
+            onClick: () => handleMenuClick("ComputedFormulaForm"),
           },
         ],
       },
@@ -366,6 +442,16 @@ const MenuNavbar = ({ projectId, onTransform }) => {
           onTransform={onTransform}
         />
       )}
+      {showComputedFormulaForm && (
+        <ComputedFormulaForm
+          projectId={projectId}
+          onClose={() => {
+            setShowComputedFormulaForm(false);
+            setActiveForm(null);
+          }}
+          onTransform={onTransform}
+        />
+      )}
       {showLogs && (
         <LogsPanel
           logs={logs}
@@ -385,10 +471,24 @@ const MenuNavbar = ({ projectId, onTransform }) => {
           onRevert={handleRevert}
         />
       )}
+      {showPipelines && (
+        <PipelinesPanel
+          pipelines={pipelines}
+          onClose={() => {
+            setShowPipelines(false);
+            setActiveForm(null);
+          }}
+          onApply={handleApplyPipeline}
+        />
+      )}
 
       <InputDialog
         isOpen={isInputOpen}
-        message="Enter a commit message for this save:"
+        message={
+          inputMode === "pipeline"
+            ? "Enter a name for this reusable pipeline:"
+            : "Enter a commit message for this save:"
+        }
         onSubmit={handleSubmitCommit}
         onCancel={() => setIsInputOpen(false)}
       />
