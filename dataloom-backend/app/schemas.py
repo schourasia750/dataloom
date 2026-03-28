@@ -263,6 +263,7 @@ class BasicQueryResponse(BaseModel):
     columns: list[str]
     rows: list[list]
     dtypes: dict[str, str] = {}
+    profile: "DatasetProfile"
 
 
 class ProjectResponse(BaseModel):
@@ -275,6 +276,39 @@ class ProjectResponse(BaseModel):
     row_count: int
     rows: list[list]
     dtypes: dict[str, str] = {}
+    profile: "DatasetProfile"
+
+
+class DatasetProfileSummary(BaseModel):
+    """High-level summary facts for a dataset."""
+
+    row_count: int
+    column_count: int
+    missing_cells: int
+    duplicate_rows: int
+
+
+class ColumnProfile(BaseModel):
+    """Profiling facts for a single dataset column."""
+
+    name: str
+    data_type: str
+    non_null_count: int
+    missing_count: int
+    missing_percent: float
+    unique_count: int
+    unique_percent: float
+    sample_values: list[Any] = []
+    mean: float | None = None
+    min: Any | None = None
+    max: Any | None = None
+
+
+class DatasetProfile(BaseModel):
+    """Dataset profile returned alongside project data."""
+
+    summary: DatasetProfileSummary
+    columns: list[ColumnProfile]
 
 
 # --- Other response schemas ---

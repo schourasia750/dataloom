@@ -1,12 +1,13 @@
 import { useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useProjectContext } from "../context/ProjectContext";
+import DataProfilePanel from "./DataProfilePanel";
 import MenuNavbar from "./MenuNavbar";
 import Table from "./Table";
 
 export default function DataScreen() {
   const { projectId } = useParams();
-  const { setProjectInfo, refreshProject } = useProjectContext();
+  const { setProjectInfo, refreshProject, profile } = useProjectContext();
   const [tableData, setTableData] = useState(null);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function DataScreen() {
   return (
     <div className="flex flex-col min-h-screen">
       <MenuNavbar onTransform={handleTransform} projectId={projectId} />
+      <DataProfilePanel profile={profile} />
       <Table projectId={projectId} data={tableData} />
     </div>
   );

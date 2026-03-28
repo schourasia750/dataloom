@@ -57,10 +57,10 @@ const Table = ({ projectId, data: externalData }) => {
   }, [externalData]);
 
   const updateTableData = (response) => {
-    const { columns, rows, dtypes: newDtypes } = response;
+    const { columns, rows, dtypes: newDtypes, profile } = response;
     setColumns(["S.No.", ...columns]);
     setData(rows.map((row, index) => [index + 1, ...Object.values(row)]));
-    updateData(columns, rows, newDtypes);
+    updateData(columns, rows, newDtypes, profile);
   };
 
   const handleAddRow = async (index) => {
