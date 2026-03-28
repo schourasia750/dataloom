@@ -415,6 +415,39 @@ def drop_na(df: pd.DataFrame, columns: list[str] | None = None) -> pd.DataFrame:
     return df.dropna().reset_index(drop=True)
 
 
+def join_projects(
+    left_df: pd.DataFrame,
+    right_df: pd.DataFrame,
+    left_on: str,
+    right_on: str,
+    join_type: str,
+    suffix: str | None = None,
+) -> pd.DataFrame:
+    """Join two project dataframes using pandas merge."""
+
+    if left_on not in left_df.columns:
+        raise TransformationError(f"Column '{left_on}' not found in current project")
+    if right_on not in right_df.columns:
+        raise TransformationError(f"Column '{right_on}' not found in joined project")
+
+    suffix_value = suffix.strip() if suffix else "joined"
+    if not suffix_value:
+        suffix_value = "joined"
+
+    try:
+        result = left_df.merge(
+            right_df,
+            how=join_type,
+            left_on=left_on,
+            right_on=right_on,
+            suffixes=("", f"_{suffix_value}"),
+        )
+    except Exception as e:
+        raise TransformationError(f"Failed to join projects: {e}") from e
+
+    return result.reset_index(drop=True)
+
+
 def apply_logged_transformation(df: pd.DataFrame, action_type: str, action_details: dict) -> pd.DataFrame:
     """Replay a logged transformation from its serialized form.
 
@@ -487,6 +520,20 @@ def apply_logged_transformation(df: pd.DataFrame, action_type: str, action_detai
     elif action_type == "dropNa":
         columns = action_details.get("drop_na_params", {}).get("columns")
         return drop_na(df, columns)
+
+    elif action_type == "joinProjects":
+        params = action_details["join_projects_params"]
+        snapshot_columns = params["right_project_snapshot_columns"]
+        snapshot_rows = params["right_project_snapshot_rows"]
+        right_df = pd.DataFrame(snapshot_rows, columns=snapshot_columns)
+        return join_projects(
+            df,
+            right_df,
+            left_on=params["left_on"],
+            right_on=params["right_on"],
+            join_type=params["join_type"],
+            suffix=params.get("suffix"),
+        )
 
     else:
         logger.warning("Unknown action type in log replay: %s", action_type)

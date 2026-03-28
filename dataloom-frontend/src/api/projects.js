@@ -40,6 +40,15 @@ export const getRecentProjects = async () => {
 };
 
 /**
+ * Fetch all projects ordered by most recently modified.
+ * @returns {Promise<Array>} List of project summaries.
+ */
+export const getAllProjects = async () => {
+  const response = await client.get("/projects");
+  return response.data;
+};
+
+/**
  * Save the current project state as a checkpoint.
  * @param {string} projectId - The project ID.
  * @param {string} commitMessage - Description of changes.

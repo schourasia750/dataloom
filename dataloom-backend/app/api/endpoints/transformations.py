@@ -19,7 +19,18 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-COMPLEX_OPERATIONS = {"dropDuplicate", "advQueryFilter", "pivotTables", "dropNa"}
+COMPLEX_OPERATIONS = {"dropDuplicate", "advQueryFilter", "pivotTables", "dropNa", "joinProjects"}
+
+
+def _serialize_join_log_details(project_id, transformation_input, right_project, right_df):
+    """Persist enough information to replay a cross-project join deterministically."""
+
+    details = transformation_input.model_dump(mode="json")
+    details["join_projects_params"]["left_project_id"] = str(project_id)
+    details["join_projects_params"]["right_project_name"] = right_project.name
+    details["join_projects_params"]["right_project_snapshot_columns"] = right_df.columns.tolist()
+    details["join_projects_params"]["right_project_snapshot_rows"] = right_df.fillna("").values.tolist()
+    return details
 
 
 def _handle_basic_transform(df, transformation_input, project, db, project_id):
@@ -132,6 +143,23 @@ def _handle_complex_transform(df, transformation_input, project, db, project_id)
             columns = transformation_input.drop_na_params.columns
         return ts.drop_na(df, columns), True
 
+    elif op == "joinProjects":
+        if not transformation_input.join_projects_params:
+            raise HTTPException(status_code=400, detail="Join project parameters required")
+        params = transformation_input.join_projects_params
+        right_project = get_project_or_404(params.right_project_id, db)
+        right_df = read_csv_safe(right_project.file_path)
+        result_df = ts.join_projects(
+            df,
+            right_df,
+            left_on=params.left_on,
+            right_on=params.right_on,
+            join_type=params.join_type,
+            suffix=params.suffix,
+        )
+        log_details = _serialize_join_log_details(project_id, transformation_input, right_project, right_df)
+        return result_df, True, log_details
+
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported operation: {op}")
 
@@ -153,9 +181,15 @@ async def transform_project(
 
     try:
         if op in COMPLEX_OPERATIONS:
-            result_df, should_save = _handle_complex_transform(df, transformation_input, project, db, project_id)
+            complex_result = _handle_complex_transform(df, transformation_input, project, db, project_id)
+            if len(complex_result) == 3:
+                result_df, should_save, log_details = complex_result
+            else:
+                result_df, should_save = complex_result
+                log_details = transformation_input.model_dump(mode="json")
         else:
             result_df, should_save = _handle_basic_transform(df, transformation_input, project, db, project_id)
+            log_details = transformation_input.model_dump(mode="json")
     except ts.TransformationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -163,7 +197,7 @@ async def transform_project(
 
     if should_save:
         save_csv_safe(result_df, project.file_path)
-        log_transformation(db, project_id, transformation_input.operation_type, transformation_input.dict())
+        log_transformation(db, project_id, transformation_input.operation_type, log_details)
 
     resp = dataframe_to_response(result_df)
     return {

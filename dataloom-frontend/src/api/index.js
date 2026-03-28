@@ -6,6 +6,7 @@ export {
   uploadProject,
   getProjectDetails,
   getRecentProjects,
+  getAllProjects,
   saveProject,
   revertToCheckpoint,
   exportProject,

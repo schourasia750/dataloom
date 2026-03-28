@@ -6,6 +6,7 @@ import AdvQueryFilterForm from "./forms/AdvQueryFilterForm";
 import PivotTableForm from "./forms/PivotTableForm";
 import CastDataTypeForm from "./forms/CastDataTypeForm";
 import TrimWhitespaceForm from "./forms/TrimWhitespaceForm";
+import JoinProjectForm from "./forms/JoinProjectForm";
 import LogsPanel from "./history/LogsPanel";
 import CheckpointsPanel from "./history/CheckpointsPanel";
 import InputDialog from "./common/InputDialog";
@@ -25,6 +26,7 @@ import {
   LuDownload,
   LuRefreshCw,
   LuScissors,
+  LuCombine,
 } from "react-icons/lu";
 
 const MenuNavbar = ({ projectId, onTransform }) => {
@@ -37,6 +39,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showCastDataTypeForm, setShowCastDataTypeForm] = useState(false);
   const [showTrimWhitespaceForm, setShowTrimWhitespaceForm] = useState(false);
+  const [showJoinProjectForm, setShowJoinProjectForm] = useState(false);
   const [logs, setLogs] = useState([]);
   const [checkpoints, setCheckpoints] = useState(null);
   const [isInputOpen, setIsInputOpen] = useState(false);
@@ -125,6 +128,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     setShowPivotTableForm(false);
     setShowCastDataTypeForm(false);
     setShowTrimWhitespaceForm(false);
+    setShowJoinProjectForm(false);
     setShowLogs(false);
     setShowCheckpoints(false);
 
@@ -151,6 +155,9 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         break;
       case "TrimWhitespaceForm":
         setShowTrimWhitespaceForm(true);
+        break;
+      case "JoinProjectForm":
+        setShowJoinProjectForm(true);
         break;
       case "Logs":
         setShowLogs(true);
@@ -225,6 +232,12 @@ const MenuNavbar = ({ projectId, onTransform }) => {
             icon: LuScissors,
             formType: "TrimWhitespaceForm",
             onClick: () => handleMenuClick("TrimWhitespaceForm"),
+          },
+          {
+            label: "Join Project",
+            icon: LuCombine,
+            formType: "JoinProjectForm",
+            onClick: () => handleMenuClick("JoinProjectForm"),
           },
         ],
       },
@@ -361,6 +374,16 @@ const MenuNavbar = ({ projectId, onTransform }) => {
           projectId={projectId}
           onClose={() => {
             setShowTrimWhitespaceForm(false);
+            setActiveForm(null);
+          }}
+          onTransform={onTransform}
+        />
+      )}
+      {showJoinProjectForm && (
+        <JoinProjectForm
+          projectId={projectId}
+          onClose={() => {
+            setShowJoinProjectForm(false);
             setActiveForm(null);
           }}
           onTransform={onTransform}

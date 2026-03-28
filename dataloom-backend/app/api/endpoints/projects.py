@@ -16,6 +16,7 @@ from app.services.project_service import (
     create_checkpoint,
     create_project,
     delete_project,
+    get_all_projects,
     get_recent_projects,
 )
 from app.services.transformation_service import apply_logged_transformation
@@ -76,6 +77,22 @@ async def get_project_details(project_id: uuid.UUID, db: Session = Depends(datab
 def recent_projects(db: Session = Depends(database.get_db)):
     """Get the most recently modified projects."""
     projects = get_recent_projects(db, limit=10)
+    return [
+        schemas.LastResponse(
+            project_id=p.project_id,
+            name=p.name,
+            description=p.description,
+            last_modified=p.last_modified,
+        )
+        for p in projects
+    ]
+
+
+@router.get("", response_model=list[schemas.LastResponse])
+def list_projects(db: Session = Depends(database.get_db)):
+    """List all projects ordered by last modified descending."""
+
+    projects = get_all_projects(db)
     return [
         schemas.LastResponse(
             project_id=p.project_id,

@@ -40,6 +40,7 @@ class OperationType(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    joinProjects = "joinProjects"
 
 
 class DropDup(StrEnum):
@@ -60,6 +61,15 @@ class AggFunc(StrEnum):
     count = "count"
 
 
+class JoinType(StrEnum):
+    """Supported join strategies for merging datasets."""
+
+    inner = "inner"
+    left = "left"
+    right = "right"
+    outer = "outer"
+
+
 class ActionTypes(StrEnum):
     """Action types for user log entries."""
 
@@ -78,6 +88,7 @@ class ActionTypes(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    joinProjects = "joinProjects"
 
 
 # --- Basic transformation parameter schemas ---
@@ -113,7 +124,7 @@ class AddColumn(BaseModel):
     """
 
     index: int
-    name: str | None = None
+    name: str
 
 
 class DeleteColumn(BaseModel):
@@ -184,6 +195,16 @@ class DropNaParams(BaseModel):
         return v
 
 
+class JoinProjectsParams(BaseModel):
+    """Parameters for joining the current project with another project."""
+
+    right_project_id: uuid.UUID
+    left_on: str
+    right_on: str
+    join_type: JoinType
+    suffix: str | None = None
+
+
 # --- Complex transformation parameter schemas ---
 
 
@@ -252,6 +273,7 @@ class TransformationInput(BaseModel):
     cast_data_type_params: CastDataTypeParams | None = None
     trim_whitespace_params: TrimWhitespaceParams | None = None
     drop_na_params: DropNaParams | None = None
+    join_projects_params: JoinProjectsParams | None = None
 
 
 class BasicQueryResponse(BaseModel):

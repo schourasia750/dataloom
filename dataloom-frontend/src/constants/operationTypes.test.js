@@ -12,6 +12,7 @@ test("operation type constants match backend contract", () => {
   expect(ops.DROP_DUPLICATE).toBe("dropDuplicate");
   expect(ops.FILTER).toBe("filter");
   expect(ops.PIVOT_TABLES).toBe("pivotTables");
+  expect(ops.JOIN_PROJECTS).toBe("joinProjects");
   expect(ops.SORT).toBe("sort");
   expect(ops.TRIM_WHITESPACE).toBe("trimWhitespace");
 });

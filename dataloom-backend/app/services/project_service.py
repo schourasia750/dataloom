@@ -56,6 +56,12 @@ def get_recent_projects(db: Session, limit: int = 3) -> list[models.Project]:
     return db.query(models.Project).order_by(models.Project.last_modified.desc()).limit(limit).all()
 
 
+def get_all_projects(db: Session) -> list[models.Project]:
+    """Fetch all projects ordered by most recently modified first."""
+
+    return db.query(models.Project).order_by(models.Project.last_modified.desc()).all()
+
+
 def delete_project(db: Session, project: models.Project) -> None:
     """Delete a project record from the database.
 
