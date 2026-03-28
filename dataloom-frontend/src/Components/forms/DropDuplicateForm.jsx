@@ -2,11 +2,13 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { transformProject } from "../../api";
 import { DROP_DUPLICATE } from "../../constants/operationTypes";
+import { useProjectContext } from "../../context/ProjectContext";
 import useError from "../../hooks/useError";
 import FormErrorAlert from "../common/FormErrorAlert";
 
 const DropDuplicateForm = ({ projectId, onClose, onTransform }) => {
-  const [columns, setColumns] = useState("");
+  const { columns: projectColumns } = useProjectContext();
+  const [selectedColumns, setSelectedColumns] = useState([]);
   const [keep, setKeep] = useState("first");
   const { error, clearError, handleError } = useError();
 
@@ -15,7 +17,7 @@ const DropDuplicateForm = ({ projectId, onClose, onTransform }) => {
     const transformationInput = {
       operation_type: DROP_DUPLICATE,
       drop_duplicate: {
-        columns: columns,
+        columns: selectedColumns.join(","),
         keep: keep,
       },
     };
@@ -39,14 +41,23 @@ const DropDuplicateForm = ({ projectId, onClose, onTransform }) => {
         <div className="flex space-x-2 mb-4">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700">Columns:</label>
-            <input
-              type="text"
-              value={columns}
-              onChange={(e) => setColumns(e.target.value)}
+            <select
+              multiple
+              value={selectedColumns}
+              onChange={(e) =>
+                setSelectedColumns(Array.from(e.target.selectedOptions, (option) => option.value))
+              }
               className="border border-gray-300 rounded-md w-full px-3 py-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
-              placeholder="e.g., col1,col2"
               required
-            />
+              size={Math.min(projectColumns.length, 5) || 2}
+            >
+              {projectColumns.map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">Hold Ctrl/Cmd to select multiple columns.</p>
           </div>
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700">Keep:</label>

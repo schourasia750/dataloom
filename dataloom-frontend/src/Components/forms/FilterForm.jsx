@@ -2,11 +2,13 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { transformProject } from "../../api";
 import { FILTER } from "../../constants/operationTypes";
+import { useProjectContext } from "../../context/ProjectContext";
 import TransformResultPreview from "./TransformResultPreview";
 import useError from "../../hooks/useError";
 import FormErrorAlert from "../common/FormErrorAlert";
 
 const FilterForm = ({ projectId, onClose }) => {
+  const { columns } = useProjectContext();
   const [filterParams, setFilterParams] = useState({
     column: "",
     condition: "=",
@@ -50,14 +52,20 @@ const FilterForm = ({ projectId, onClose }) => {
         <div className="flex flex-wrap mb-4">
           <div className="w-full sm:w-1/3 mb-2">
             <label className="block mb-1 text-sm font-medium text-gray-700">Column:</label>
-            <input
-              type="text"
+            <select
               name="column"
               value={filterParams.column}
               onChange={handleInputChange}
               className="border border-gray-300 rounded-md px-3 py-2 w-full bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
               required
-            />
+            >
+              <option value="">Select column...</option>
+              {columns.map((col) => (
+                <option key={col} value={col}>
+                  {col}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="w-full sm:w-1/3 mb-2 pl-2">
             <label className="block mb-1 text-sm font-medium text-gray-700">Condition:</label>
