@@ -158,6 +158,23 @@ class DataType(StrEnum):
     datetime = "datetime"
 
 
+class ExportFormat(StrEnum):
+    """Supported dataset export formats."""
+
+    csv = "csv"
+    xlsx = "xlsx"
+    parquet = "parquet"
+    json = "json"
+    tsv = "tsv"
+
+
+class ReportFormat(StrEnum):
+    """Supported quality report formats."""
+
+    html = "html"
+    pdf = "pdf"
+
+
 class CastDataTypeParams(BaseModel):
     """Parameters for casting a column to a different data type."""
 

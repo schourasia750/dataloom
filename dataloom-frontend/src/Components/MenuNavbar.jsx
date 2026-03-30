@@ -10,8 +10,17 @@ import LogsPanel from "./history/LogsPanel";
 import CheckpointsPanel from "./history/CheckpointsPanel";
 import InputDialog from "./common/InputDialog";
 import ConfirmDialog from "./common/ConfirmDialog";
+import Modal from "./common/Modal";
+import Button from "./common/Button";
 import Toast from "./common/Toast";
-import { saveProject, exportProject, getLogs, getCheckpoints, revertToCheckpoint } from "../api";
+import {
+  saveProject,
+  exportProject,
+  downloadQualityReport,
+  getLogs,
+  getCheckpoints,
+  revertToCheckpoint,
+} from "../api";
 import proptype from "prop-types";
 import {
   LuFilter,
@@ -23,11 +32,14 @@ import {
   LuHistory,
   LuBookmark,
   LuDownload,
+  LuFileText,
   LuRefreshCw,
   LuScissors,
 } from "react-icons/lu";
 
 const MenuNavbar = ({ projectId, onTransform }) => {
+  const EXPORT_FORMATS = ["csv", "xlsx", "parquet", "json", "tsv"];
+  const REPORT_FORMATS = ["html", "pdf"];
   const [showFilterForm, setShowFilterForm] = useState(false);
   const [showSortForm, setShowSortForm] = useState(false);
   const [showDropDuplicateForm, setShowDropDuplicateForm] = useState(false);
@@ -40,6 +52,8 @@ const MenuNavbar = ({ projectId, onTransform }) => {
   const [logs, setLogs] = useState([]);
   const [checkpoints, setCheckpoints] = useState(null);
   const [isInputOpen, setIsInputOpen] = useState(false);
+  const [downloadDialog, setDownloadDialog] = useState(null);
+  const [selectedDownloadFormat, setSelectedDownloadFormat] = useState("csv");
   const [confirmData, setConfirmData] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -83,19 +97,49 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     }
   };
 
-  const handleExport = async () => {
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const openDownloadDialog = (type) => {
+    setDownloadDialog(type);
+    setSelectedDownloadFormat(type === "export" ? EXPORT_FORMATS[0] : REPORT_FORMATS[0]);
+  };
+
+  const handleDownloadSubmit = async () => {
     try {
-      const blob = await exportProject(projectId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "export.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const response =
+        downloadDialog === "export"
+          ? await exportProject(projectId, selectedDownloadFormat)
+          : await downloadQualityReport(projectId, selectedDownloadFormat);
+      const fallbackName =
+        downloadDialog === "export"
+          ? `export.${selectedDownloadFormat}`
+          : `quality-report.${selectedDownloadFormat}`;
+      triggerDownload(response.blob, response.filename || fallbackName);
+      setToast({
+        message:
+          downloadDialog === "export"
+            ? "Project exported successfully!"
+            : "Quality report generated successfully!",
+        type: "success",
+      });
+      setDownloadDialog(null);
     } catch {
-      setToast({ message: "Failed to export project.", type: "error" });
+      setToast({
+        message:
+          downloadDialog === "export"
+            ? "Failed to export project."
+            : "Failed to generate quality report.",
+        type: "error",
+      });
     }
   };
 
@@ -171,7 +215,12 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         group: "Save",
         items: [
           { label: "Save", icon: LuSave, onClick: handleSave },
-          { label: "Export", icon: LuDownload, onClick: handleExport },
+          { label: "Export", icon: LuDownload, onClick: () => openDownloadDialog("export") },
+          {
+            label: "Quality",
+            icon: LuFileText,
+            onClick: () => openDownloadDialog("report"),
+          },
         ],
       },
       {
@@ -392,6 +441,42 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         onSubmit={handleSubmitCommit}
         onCancel={() => setIsInputOpen(false)}
       />
+
+      <Modal
+        isOpen={!!downloadDialog}
+        onClose={() => setDownloadDialog(null)}
+        title={downloadDialog === "export" ? "Export Project" : "Generate Quality Report"}
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            {downloadDialog === "export"
+              ? "Choose a format for the current dataset export."
+              : "Choose a format for the dataset quality report."}
+          </p>
+          <label className="block">
+            <span className="block text-sm font-medium text-gray-700 mb-2">Format</span>
+            <select
+              value={selectedDownloadFormat}
+              onChange={(e) => setSelectedDownloadFormat(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {(downloadDialog === "export" ? EXPORT_FORMATS : REPORT_FORMATS).map((format) => (
+                <option key={format} value={format}>
+                  {format.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" type="button" onClick={() => setDownloadDialog(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleDownloadSubmit}>
+              Download
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         isOpen={!!confirmData}

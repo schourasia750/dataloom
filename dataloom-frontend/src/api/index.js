@@ -9,6 +9,7 @@ export {
   saveProject,
   revertToCheckpoint,
   exportProject,
+  downloadQualityReport,
   deleteProject,
 } from "./projects";
 export { transformProject } from "./transforms";

@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 from app.utils.logging import get_logger
+from app.utils.pandas_helpers import read_dataframe_safe, save_csv_safe
 from app.utils.security import resolve_upload_path, sanitize_filename
 
 logger = get_logger(__name__)
@@ -12,8 +13,9 @@ logger = get_logger(__name__)
 def store_upload(file) -> tuple[Path, Path]:
     """Store an uploaded file and create a working copy.
 
-    Saves the file with a sanitized name and creates a _copy.csv for
-    transformation operations, keeping the original pristine.
+    Saves the original file with a sanitized name and creates a normalized
+    _copy.csv working file for transformation operations, keeping the original
+    pristine.
 
     Args:
         file: The FastAPI UploadFile object.
@@ -27,8 +29,9 @@ def store_upload(file) -> tuple[Path, Path]:
     with open(original_path, "wb+") as f:
         shutil.copyfileobj(file.file, f)
 
-    copy_path = Path(str(original_path).replace(".csv", "_copy.csv"))
-    shutil.copy2(original_path, copy_path)
+    copy_path = Path(f"{original_path}_copy.csv")
+    df = read_dataframe_safe(original_path)
+    save_csv_safe(df, copy_path)
 
     logger.info("Stored upload: original=%s, copy=%s", original_path, copy_path)
     return original_path, copy_path
@@ -43,7 +46,10 @@ def get_original_path(copy_path: str) -> Path:
     Returns:
         Path to the original CSV file.
     """
-    return Path(copy_path.replace("_copy.csv", ".csv"))
+    path = Path(copy_path)
+    if path.name.endswith("_copy.csv"):
+        return path.with_name(path.name[: -len("_copy.csv")])
+    return path
 
 
 def delete_project_files(copy_path: str) -> None:

@@ -5,8 +5,8 @@
 import client from "./client";
 
 /**
- * Upload a new project CSV file.
- * @param {File} file - The CSV file to upload.
+ * Upload a new project dataset file.
+ * @param {File} file - The dataset file to upload.
  * @param {string} projectName - Name for the new project.
  * @param {string} projectDescription - Description for the new project.
  * @returns {Promise<Object>} The created project response.
@@ -64,15 +64,48 @@ export const revertToCheckpoint = async (projectId, checkpointId) => {
 };
 
 /**
- * Export the current working copy of a project as a CSV download.
- * @param {string} projectId - The project ID.
- * @returns {Promise<Blob>} The CSV file as a Blob.
+ * Extract a filename from a Content-Disposition header if present.
+ * @param {string | undefined} header
+ * @returns {string | null}
  */
-export const exportProject = async (projectId) => {
+const getFilenameFromDisposition = (header) => {
+  if (!header) return null;
+  const match = header.match(/filename="?([^"]+)"?/i);
+  return match ? match[1] : null;
+};
+
+/**
+ * Export the current working copy of a project as a downloadable file.
+ * @param {string} projectId - The project ID.
+ * @param {string} format - Export format.
+ * @returns {Promise<{blob: Blob, filename: string | null}>} The download payload.
+ */
+export const exportProject = async (projectId, format = "csv") => {
   const response = await client.get(`/projects/${projectId}/export`, {
+    params: { format },
     responseType: "blob",
   });
-  return response.data;
+  return {
+    blob: response.data,
+    filename: getFilenameFromDisposition(response.headers["content-disposition"]),
+  };
+};
+
+/**
+ * Download a generated quality report for a project.
+ * @param {string} projectId - The project ID.
+ * @param {string} format - Report format.
+ * @returns {Promise<{blob: Blob, filename: string | null}>} The download payload.
+ */
+export const downloadQualityReport = async (projectId, format = "html") => {
+  const response = await client.get(`/projects/${projectId}/quality-report`, {
+    params: { format },
+    responseType: "blob",
+  });
+  return {
+    blob: response.data,
+    filename: getFilenameFromDisposition(response.headers["content-disposition"]),
+  };
 };
 
 /**

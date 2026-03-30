@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     Attributes:
         database_url: PostgreSQL connection string.
-        upload_dir: Directory for storing uploaded CSV files.
+        upload_dir: Directory for storing uploaded dataset files.
         max_upload_size_bytes: Maximum allowed upload file size in bytes.
         allowed_extensions: List of permitted file extensions for upload.
         cors_origins: List of allowed CORS origin URLs.
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     database_url: str
     upload_dir: str = "uploads"
     max_upload_size_bytes: int = 10_485_760  # 10 MB
-    allowed_extensions: list[str] = [".csv"]
+    allowed_extensions: list[str] = [".csv", ".xlsx", ".parquet", ".json", ".tsv"]
     cors_origins: list[str] = ["http://localhost:3200"]
     debug: bool = False
 

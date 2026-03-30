@@ -1,5 +1,6 @@
-"""Pandas utility functions for safe CSV operations and response building."""
+"""Pandas utility functions for safe dataframe operations and response building."""
 
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -7,24 +8,43 @@ import pandas as pd
 from fastapi import HTTPException
 
 
-def read_csv_safe(path: Path) -> pd.DataFrame:
-    """Read a CSV file safely with error handling.
+def read_dataframe_safe(path: Path) -> pd.DataFrame:
+    """Read a supported dataset file safely with error handling.
 
     Args:
-        path: Path to the CSV file.
+        path: Path to the dataset file.
 
     Returns:
-        DataFrame with the CSV contents.
+        DataFrame with the file contents.
 
     Raises:
         HTTPException: If the file cannot be read.
     """
+    path = Path(path)
     try:
-        return pd.read_csv(path)
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            return pd.read_csv(path)
+        if suffix == ".tsv":
+            return pd.read_csv(path, sep="\t")
+        if suffix == ".xlsx":
+            return pd.read_excel(path)
+        if suffix == ".json":
+            return pd.read_json(path)
+        if suffix == ".parquet":
+            return pd.read_parquet(path)
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
+    except HTTPException:
+        raise
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"CSV file not found: {path}") from None
+        raise HTTPException(status_code=404, detail=f"Dataset file not found: {path}") from None
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading CSV: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"Error reading dataset: {str(e)}") from e
+
+
+def read_csv_safe(path: Path) -> pd.DataFrame:
+    """Read a CSV file safely with error handling."""
+    return read_dataframe_safe(path)
 
 
 def save_csv_safe(df: pd.DataFrame, path: Path) -> None:
@@ -41,6 +61,30 @@ def save_csv_safe(df: pd.DataFrame, path: Path) -> None:
         df.to_csv(path, index=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving CSV: {str(e)}") from e
+
+
+def dataframe_to_bytes(df: pd.DataFrame, export_format: str) -> bytes:
+    """Serialize a DataFrame into a downloadable file payload."""
+    try:
+        if export_format == "csv":
+            return df.to_csv(index=False).encode("utf-8")
+        if export_format == "tsv":
+            return df.to_csv(index=False, sep="\t").encode("utf-8")
+        if export_format == "json":
+            return df.to_json(orient="records", indent=2, date_format="iso").encode("utf-8")
+        if export_format == "xlsx":
+            buffer = BytesIO()
+            df.to_excel(buffer, index=False, engine="openpyxl")
+            return buffer.getvalue()
+        if export_format == "parquet":
+            buffer = BytesIO()
+            df.to_parquet(buffer, index=False)
+            return buffer.getvalue()
+        raise HTTPException(status_code=400, detail=f"Unsupported export format: {export_format}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error exporting dataset: {str(e)}") from e
 
 
 def _map_dtype(dtype) -> str:

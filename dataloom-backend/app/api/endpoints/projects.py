@@ -3,10 +3,11 @@
 Handles upload, retrieval, save (checkpoint), and revert operations.
 """
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlmodel import Session
 
 from app import database, models, schemas
@@ -18,9 +19,16 @@ from app.services.project_service import (
     delete_project,
     get_recent_projects,
 )
+from app.services.quality_service import EXPORT_MEDIA_TYPES, REPORT_MEDIA_TYPES, build_quality_report
 from app.services.transformation_service import apply_logged_transformation
 from app.utils.logging import get_logger
-from app.utils.pandas_helpers import dataframe_to_response, read_csv_safe, save_csv_safe
+from app.utils.pandas_helpers import (
+    dataframe_to_bytes,
+    dataframe_to_response,
+    read_csv_safe,
+    read_dataframe_safe,
+    save_csv_safe,
+)
 from app.utils.security import validate_upload_file
 
 logger = get_logger(__name__)
@@ -35,7 +43,7 @@ async def upload_project(
     projectDescription: str = Form(...),
     db: Session = Depends(database.get_db),
 ):
-    """Upload a new CSV file for a project.
+    """Upload a new dataset file for a project.
 
     Validates the file, stores it with a sanitized name, creates a working copy,
     and returns the initial project data.
@@ -44,7 +52,7 @@ async def upload_project(
     validate_upload_file(file)
 
     original_path, copy_path = store_upload(file)
-    df = read_csv_safe(original_path)
+    df = read_dataframe_safe(original_path)
 
     project = create_project(db, projectName, str(copy_path), projectDescription)
 
@@ -206,11 +214,54 @@ async def revert_to_checkpoint(
     }
 
 
+def _download_name(project_name: str, extension: str) -> str:
+    safe_name = re.sub(r"[^\w.\-]+", "_", project_name).strip("._") or "project"
+    return f"{safe_name}.{extension}"
+
+
+def _content_disposition(filename: str) -> dict[str, str]:
+    return {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+
 @router.get("/{project_id}/export")
-async def export_project(project_id: uuid.UUID, db: Session = Depends(database.get_db)):
-    """Download the current working copy of a project as a CSV file."""
+async def export_project(
+    project_id: uuid.UUID,
+    format: schemas.ExportFormat = schemas.ExportFormat.csv,
+    db: Session = Depends(database.get_db),
+):
+    """Download the current working copy of a project in the requested format."""
     project = get_project_or_404(project_id, db)
-    return FileResponse(project.file_path, media_type="text/csv", filename=f"{project.name}.csv")
+    if format == schemas.ExportFormat.csv:
+        return FileResponse(
+            project.file_path,
+            media_type=EXPORT_MEDIA_TYPES[format],
+            filename=_download_name(project.name, "csv"),
+        )
+
+    df = read_csv_safe(project.file_path)
+    payload = dataframe_to_bytes(df, format.value)
+    return Response(
+        content=payload,
+        media_type=EXPORT_MEDIA_TYPES[format],
+        headers=_content_disposition(_download_name(project.name, format.value)),
+    )
+
+
+@router.get("/{project_id}/quality-report")
+async def project_quality_report(
+    project_id: uuid.UUID,
+    format: schemas.ReportFormat = schemas.ReportFormat.html,
+    db: Session = Depends(database.get_db),
+):
+    """Generate a quality report for the current working copy."""
+    project = get_project_or_404(project_id, db)
+    df = read_csv_safe(project.file_path)
+    payload = build_quality_report(project.name, df, format)
+    return Response(
+        content=payload,
+        media_type=REPORT_MEDIA_TYPES[format],
+        headers=_content_disposition(_download_name(f"{project.name}_quality_report", format.value)),
+    )
 
 
 @router.delete("/{project_id}")

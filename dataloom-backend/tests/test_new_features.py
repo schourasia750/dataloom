@@ -1,6 +1,8 @@
 """Tests for new features: rename column, cast data type, export, and delete project."""
 
 import csv
+import json
+from io import BytesIO
 
 import pandas as pd
 import pytest
@@ -215,7 +217,17 @@ class TestAddDeleteColumnEndpoint:
 
 
 class TestExportEndpoint:
-    def test_export_project(self, client, sample_csv, db):
+    @pytest.mark.parametrize(
+        ("export_format", "expected_content_type"),
+        [
+            ("csv", "text/csv"),
+            ("tsv", "text/tab-separated-values"),
+            ("json", "application/json"),
+            ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            ("parquet", "application/octet-stream"),
+        ],
+    )
+    def test_export_project(self, client, sample_csv, db, export_format, expected_content_type):
         # Upload a project first
         with open(sample_csv, "rb") as f:
             response = client.post(
@@ -227,20 +239,61 @@ class TestExportEndpoint:
         project_id = response.json()["project_id"]
 
         # Export the project
-        export_response = client.get(f"/projects/{project_id}/export")
+        export_response = client.get(f"/projects/{project_id}/export?format={export_format}")
         assert export_response.status_code == 200
-        assert export_response.headers["content-type"] == "text/csv; charset=utf-8"
+        assert export_response.headers["content-type"].startswith(expected_content_type)
 
-        # Verify content is valid CSV
-        content = export_response.content.decode("utf-8")
-        reader = csv.reader(content.strip().splitlines())
-        rows = list(reader)
-        assert rows[0] == ["name", "age", "city"]
-        assert len(rows) == 5  # header + 4 data rows
+        if export_format in {"csv", "tsv"}:
+            content = export_response.content.decode("utf-8")
+            delimiter = "," if export_format == "csv" else "\t"
+            reader = csv.reader(content.strip().splitlines(), delimiter=delimiter)
+            rows = list(reader)
+            assert rows[0] == ["name", "age", "city"]
+            assert len(rows) == 5
+        elif export_format == "json":
+            payload = json.loads(export_response.content.decode("utf-8"))
+            assert payload[0]["name"] == "Alice"
+            assert len(payload) == 4
+        elif export_format == "xlsx":
+            df = pd.read_excel(BytesIO(export_response.content))
+            assert list(df.columns) == ["name", "age", "city"]
+            assert len(df) == 4
+        elif export_format == "parquet":
+            df = pd.read_parquet(BytesIO(export_response.content))
+            assert list(df.columns) == ["name", "age", "city"]
+            assert len(df) == 4
 
     def test_export_nonexistent_project(self, client):
         response = client.get("/projects/00000000-0000-0000-0000-000000000000/export")
         assert response.status_code == 404
+
+    @pytest.mark.parametrize(
+        ("report_format", "expected_content_type"),
+        [
+            ("html", "text/html"),
+            ("pdf", "application/pdf"),
+        ],
+    )
+    def test_quality_report_generation(self, client, sample_csv, db, report_format, expected_content_type):
+        with open(sample_csv, "rb") as f:
+            response = client.post(
+                "/projects/upload",
+                files={"file": ("test.csv", f, "text/csv")},
+                data={"projectName": "Quality Test", "projectDescription": "Test quality reports"},
+            )
+        assert response.status_code == 200
+        project_id = response.json()["project_id"]
+
+        report_response = client.get(f"/projects/{project_id}/quality-report?format={report_format}")
+        assert report_response.status_code == 200
+        assert report_response.headers["content-type"].startswith(expected_content_type)
+
+        if report_format == "html":
+            body = report_response.content.decode("utf-8")
+            assert "Quality Test Quality Report" in body
+            assert "Column Summary" in body
+        else:
+            assert report_response.content.startswith(b"%PDF")
 
 
 # --- Delete Endpoint Tests ---

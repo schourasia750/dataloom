@@ -60,6 +60,8 @@ def _handle_basic_transform(df, transformation_input, project, db, project_id):
         if not transformation_input.add_col_params:
             raise HTTPException(status_code=400, detail="Column parameters required")
         p = transformation_input.add_col_params
+        if not p.name or not p.name.strip():
+            raise HTTPException(status_code=422, detail="Column name is required")
         return ts.add_column(df, p.index, p.name), True
 
     elif op == "delCol":
@@ -156,6 +158,8 @@ async def transform_project(
             result_df, should_save = _handle_complex_transform(df, transformation_input, project, db, project_id)
         else:
             result_df, should_save = _handle_basic_transform(df, transformation_input, project, db, project_id)
+    except HTTPException:
+        raise
     except ts.TransformationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -163,7 +167,7 @@ async def transform_project(
 
     if should_save:
         save_csv_safe(result_df, project.file_path)
-        log_transformation(db, project_id, transformation_input.operation_type, transformation_input.dict())
+        log_transformation(db, project_id, transformation_input.operation_type, transformation_input.model_dump())
 
     resp = dataframe_to_response(result_df)
     return {
