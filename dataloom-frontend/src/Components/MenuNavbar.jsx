@@ -6,6 +6,7 @@ import AdvQueryFilterForm from "./forms/AdvQueryFilterForm";
 import PivotTableForm from "./forms/PivotTableForm";
 import CastDataTypeForm from "./forms/CastDataTypeForm";
 import TrimWhitespaceForm from "./forms/TrimWhitespaceForm";
+import QualityPanel from "./quality/QualityPanel";
 import LogsPanel from "./history/LogsPanel";
 import CheckpointsPanel from "./history/CheckpointsPanel";
 import InputDialog from "./common/InputDialog";
@@ -25,6 +26,7 @@ import {
   LuDownload,
   LuRefreshCw,
   LuScissors,
+  LuShieldCheck,
 } from "react-icons/lu";
 
 const MenuNavbar = ({ projectId, onTransform }) => {
@@ -37,6 +39,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showCastDataTypeForm, setShowCastDataTypeForm] = useState(false);
   const [showTrimWhitespaceForm, setShowTrimWhitespaceForm] = useState(false);
+  const [showQualityPanel, setShowQualityPanel] = useState(false);
   const [logs, setLogs] = useState([]);
   const [checkpoints, setCheckpoints] = useState(null);
   const [isInputOpen, setIsInputOpen] = useState(false);
@@ -125,6 +128,7 @@ const MenuNavbar = ({ projectId, onTransform }) => {
     setShowPivotTableForm(false);
     setShowCastDataTypeForm(false);
     setShowTrimWhitespaceForm(false);
+    setShowQualityPanel(false);
     setShowLogs(false);
     setShowCheckpoints(false);
 
@@ -151,6 +155,9 @@ const MenuNavbar = ({ projectId, onTransform }) => {
         break;
       case "TrimWhitespaceForm":
         setShowTrimWhitespaceForm(true);
+        break;
+      case "QualityPanel":
+        setShowQualityPanel(true);
         break;
       case "Logs":
         setShowLogs(true);
@@ -196,6 +203,12 @@ const MenuNavbar = ({ projectId, onTransform }) => {
       {
         group: "Transform",
         items: [
+          {
+            label: "Quality",
+            icon: LuShieldCheck,
+            formType: "QualityPanel",
+            onClick: () => handleMenuClick("QualityPanel"),
+          },
           {
             label: "Filter",
             icon: LuFilter,
@@ -361,6 +374,16 @@ const MenuNavbar = ({ projectId, onTransform }) => {
           projectId={projectId}
           onClose={() => {
             setShowTrimWhitespaceForm(false);
+            setActiveForm(null);
+          }}
+          onTransform={onTransform}
+        />
+      )}
+      {showQualityPanel && (
+        <QualityPanel
+          projectId={projectId}
+          onClose={() => {
+            setShowQualityPanel(false);
             setActiveForm(null);
           }}
           onTransform={onTransform}

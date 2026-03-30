@@ -40,6 +40,8 @@ class OperationType(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    qualityAssessment = "qualityAssessment"
+    qualityFix = "qualityFix"
 
 
 class DropDup(StrEnum):
@@ -78,6 +80,7 @@ class ActionTypes(StrEnum):
     castDataType = "castDataType"
     trimWhitespace = "trimWhitespace"
     dropNa = "dropNa"
+    qualityFix = "qualityFix"
 
 
 # --- Basic transformation parameter schemas ---
@@ -113,7 +116,14 @@ class AddColumn(BaseModel):
     """
 
     index: int
-    name: str | None = None
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, v):
+        if v is None or not v.strip():
+            raise ValueError("name is required")
+        return v
 
 
 class DeleteColumn(BaseModel):
@@ -184,6 +194,17 @@ class DropNaParams(BaseModel):
         return v
 
 
+class QualityFixParams(BaseModel):
+    """Parameters for applying an automated quality fix."""
+
+    issue_type: str
+    columns: list[str] | None = None
+    keep: str | bool | None = None
+    column: str | None = None
+    pattern_name: str | None = None
+    strategy: str | None = None
+
+
 # --- Complex transformation parameter schemas ---
 
 
@@ -252,6 +273,7 @@ class TransformationInput(BaseModel):
     cast_data_type_params: CastDataTypeParams | None = None
     trim_whitespace_params: TrimWhitespaceParams | None = None
     drop_na_params: DropNaParams | None = None
+    quality_fix_params: QualityFixParams | None = None
 
 
 class BasicQueryResponse(BaseModel):
@@ -263,6 +285,38 @@ class BasicQueryResponse(BaseModel):
     columns: list[str]
     rows: list[list]
     dtypes: dict[str, str] = {}
+
+
+class QualitySummary(BaseModel):
+    """High-level counts for quality issues."""
+
+    duplicate_rows: int
+    outliers: int
+    pattern_violations: int
+    total_issues: int
+
+
+class QualityIssueGroup(BaseModel):
+    """Container for quality issue details."""
+
+    duplicates: dict[str, Any]
+    outliers: list[dict[str, Any]]
+    pattern_violations: list[dict[str, Any]]
+
+
+class QualityAssessmentResponse(BaseModel):
+    """Response for dataset quality assessments."""
+
+    project_id: uuid.UUID
+    score: int
+    summary: QualitySummary
+    issues: QualityIssueGroup
+
+
+class QualityFixResponse(BasicQueryResponse):
+    """Response for quality fixes, including a refreshed assessment."""
+
+    quality_assessment: QualityAssessmentResponse
 
 
 class ProjectResponse(BaseModel):

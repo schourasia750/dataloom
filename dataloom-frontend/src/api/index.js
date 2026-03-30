@@ -5,11 +5,12 @@
 export {
   uploadProject,
   getProjectDetails,
+  getQualityAssessment,
   getRecentProjects,
   saveProject,
   revertToCheckpoint,
   exportProject,
   deleteProject,
 } from "./projects";
-export { transformProject } from "./transforms";
+export { transformProject, applyQualityFix } from "./transforms";
 export { getLogs, getCheckpoints } from "./logs";

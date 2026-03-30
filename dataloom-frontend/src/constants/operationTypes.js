@@ -37,3 +37,7 @@ export const RENAME_COLUMN = "renameCol";
 export const CAST_DATA_TYPE = "castDataType";
 /** @type {string} Trim whitespace from columns */
 export const TRIM_WHITESPACE = "trimWhitespace";
+/** @type {string} Run a quality scan */
+export const QUALITY_ASSESSMENT = "qualityAssessment";
+/** @type {string} Apply an automated quality fix */
+export const QUALITY_FIX = "qualityFix";

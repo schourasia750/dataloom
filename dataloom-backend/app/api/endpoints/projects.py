@@ -18,6 +18,7 @@ from app.services.project_service import (
     delete_project,
     get_recent_projects,
 )
+from app.services.quality_service import analyze_quality
 from app.services.transformation_service import apply_logged_transformation
 from app.utils.logging import get_logger
 from app.utils.pandas_helpers import dataframe_to_response, read_csv_safe, save_csv_safe
@@ -211,6 +212,15 @@ async def export_project(project_id: uuid.UUID, db: Session = Depends(database.g
     """Download the current working copy of a project as a CSV file."""
     project = get_project_or_404(project_id, db)
     return FileResponse(project.file_path, media_type="text/csv", filename=f"{project.name}.csv")
+
+
+@router.get("/{project_id}/quality-assessment", response_model=schemas.QualityAssessmentResponse)
+async def get_quality_assessment(project_id: uuid.UUID, db: Session = Depends(database.get_db)):
+    """Analyze the current working copy for common quality problems."""
+    project = get_project_or_404(project_id, db)
+    df = read_csv_safe(project.file_path)
+    assessment = analyze_quality(df)
+    return {"project_id": project_id, **assessment}
 
 
 @router.delete("/{project_id}")

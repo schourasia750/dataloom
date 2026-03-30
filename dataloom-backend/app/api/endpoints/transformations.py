@@ -12,6 +12,7 @@ from app import database, schemas
 from app.api.dependencies import get_project_or_404
 from app.services import transformation_service as ts
 from app.services.project_service import log_transformation
+from app.services.quality_service import QUALITY_FIX_OPERATION, analyze_quality, apply_quality_fix
 from app.utils.logging import get_logger
 from app.utils.pandas_helpers import dataframe_to_response, read_csv_safe, save_csv_safe
 
@@ -19,7 +20,7 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
-COMPLEX_OPERATIONS = {"dropDuplicate", "advQueryFilter", "pivotTables", "dropNa"}
+COMPLEX_OPERATIONS = {"dropDuplicate", "advQueryFilter", "pivotTables", "dropNa", "qualityFix"}
 
 
 def _handle_basic_transform(df, transformation_input, project, db, project_id):
@@ -132,6 +133,13 @@ def _handle_complex_transform(df, transformation_input, project, db, project_id)
             columns = transformation_input.drop_na_params.columns
         return ts.drop_na(df, columns), True
 
+    elif op == QUALITY_FIX_OPERATION:
+        if not transformation_input.quality_fix_params:
+            raise HTTPException(status_code=400, detail="Quality fix parameters required")
+        params = transformation_input.quality_fix_params.model_dump(exclude_none=True)
+        issue_type = params.pop("issue_type")
+        return apply_quality_fix(df, issue_type, **params), True
+
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported operation: {op}")
 
@@ -163,11 +171,47 @@ async def transform_project(
 
     if should_save:
         save_csv_safe(result_df, project.file_path)
-        log_transformation(db, project_id, transformation_input.operation_type, transformation_input.dict())
+        log_transformation(
+            db, project_id, transformation_input.operation_type, transformation_input.model_dump()
+        )
 
     resp = dataframe_to_response(result_df)
     return {
         "project_id": project_id,
         "operation_type": transformation_input.operation_type,
         **resp,
+    }
+
+
+@router.post("/{project_id}/quality-fix", response_model=schemas.QualityFixResponse)
+async def apply_project_quality_fix(
+    project_id: uuid.UUID,
+    transformation_input: schemas.TransformationInput,
+    db: Session = Depends(database.get_db),
+):
+    """Apply an automated quality fix and return refreshed assessment details."""
+    project = get_project_or_404(project_id, db)
+    df = read_csv_safe(project.file_path)
+
+    if transformation_input.operation_type != QUALITY_FIX_OPERATION:
+        raise HTTPException(status_code=400, detail="operation_type must be qualityFix")
+    if not transformation_input.quality_fix_params:
+        raise HTTPException(status_code=400, detail="Quality fix parameters required")
+
+    try:
+        params = transformation_input.quality_fix_params.model_dump(exclude_none=True)
+        issue_type = params.pop("issue_type")
+        result_df = apply_quality_fix(df, issue_type, **params)
+    except ts.TransformationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    save_csv_safe(result_df, project.file_path)
+    log_transformation(db, project_id, transformation_input.operation_type, transformation_input.model_dump())
+    resp = dataframe_to_response(result_df)
+    assessment = analyze_quality(result_df)
+    return {
+        "project_id": project_id,
+        "operation_type": transformation_input.operation_type,
+        **resp,
+        "quality_assessment": {"project_id": project_id, **assessment},
     }

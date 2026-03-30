@@ -31,6 +31,16 @@ export const getProjectDetails = async (projectId) => {
 };
 
 /**
+ * Run a data quality assessment for the current project.
+ * @param {string} projectId - The project ID.
+ * @returns {Promise<Object>} Assessment result with score and detected issues.
+ */
+export const getQualityAssessment = async (projectId) => {
+  const response = await client.get(`/projects/${projectId}/quality-assessment`);
+  return response.data;
+};
+
+/**
  * Fetch the most recently modified projects.
  * @returns {Promise<Array>} List of recent project summaries.
  */
